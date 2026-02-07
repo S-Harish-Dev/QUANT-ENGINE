@@ -12,7 +12,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+import plotly.graph_objects as go
+
 # Internal Architecture
+import db_manager
+import news_manager
 
 # --- State Management ---
 if 'view_mode' not in st.session_state:
