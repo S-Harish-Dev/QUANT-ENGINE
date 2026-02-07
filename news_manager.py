@@ -131,12 +131,12 @@ CORE TASK:
 3. If the news is entirely irrelevant to {ticker} or its sector, set "relevant": false.
 
 Expected JSON Output:
-{
+{{
   "trend": "UP" | "DOWN" | "NEUTRAL",
   "expectation": float (e.g. 1.2 for +1.2% impact),
   "reason": "Explain the logical price-moving link between this news and {ticker}.",
   "relevant": true | false
-}
+}}
 
 Market Data for {ticker} Context:
 {news_text}
