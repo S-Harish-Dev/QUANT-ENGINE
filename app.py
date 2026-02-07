@@ -380,10 +380,10 @@ with mid_col:
     col1, col2 = st.columns([1,1], gap="small")
 
     with col1:
-        st.button("⚡ NEXT DAY", width="stretch", on_click=set_daily_view)
+        st.button("⚡ NEXT DAY", use_container_width=True, on_click=set_daily_view)
 
     with col2:
-        st.button("📈 WEEKLY TREND", width="stretch", on_click=set_weekly_view)
+        st.button("📈 WEEKLY TREND", use_container_width=True, on_click=set_weekly_view)
 
 # --- Background Data Orchestration ---
     # UI adjustments for compact spacing
@@ -728,7 +728,7 @@ if st.session_state.view_mode:
         
         st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
         st.markdown('<div class="mobile-chart">', unsafe_allow_html=True)
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -747,7 +747,7 @@ if st.session_state.view_mode:
             n_col1, n_col2 = st.columns([1, 2])
             with n_col1:
                 if random_img:
-                    st.image(os.path.join("images", random_img), width="stretch")
+                    st.image(os.path.join("images", random_img), use_container_width=True)
                 else:
                     st.markdown("<div style='font-size: 5rem; text-align: center; margin-bottom: 20px;'>🔍</div>", unsafe_allow_html=True)
             
