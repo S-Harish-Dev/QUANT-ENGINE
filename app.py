@@ -5,19 +5,14 @@ import gc
 from datetime import datetime, timedelta
 
 import streamlit as st
-import plotly.graph_objects as go
-
-# Internal Architecture
-import db_manager
-import news_manager
-
-# --- Global Page Configuration ---
 st.set_page_config(
     page_title="QUANT-ENGINE | Indian Market Price Inference Dashboard",
     page_icon="🇮🇳",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# Internal Architecture
 
 # --- State Management ---
 if 'view_mode' not in st.session_state:
