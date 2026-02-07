@@ -674,7 +674,14 @@ if st.session_state.view_mode:
         if history:
             # History comes sorted by target_date DESC from DB, reverse it
             history_sorted = history[::-1]
-            ai_x = [datetime.strptime(h['target_date'], "%Y-%m-%d") for h in history_sorted]
+            ai_x = []
+            for h in history_sorted:
+                td = h['target_date']
+                if isinstance(td, str):
+                    ai_x.append(datetime.strptime(td, "%Y-%m-%d"))
+                else:
+                    # Handle date/datetime objects from SQLAlchemy/Pandas
+                    ai_x.append(datetime(td.year, td.month, td.day))
             ai_y = [h['target_price'] for h in history_sorted]
         
         # Add the current prediction if it's newer than the last history point
