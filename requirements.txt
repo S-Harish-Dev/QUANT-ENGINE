@@ -1,0 +1,22 @@
+# --- Core Frameworks ---
+streamlit==1.41.1
+pandas>=2.2.3
+numpy>=2.1.0
+plotly
+
+# --- Machine Learning (CPU Only RECOMMENDED) ---
+# To install CPU version specifically, run:
+# pip install torch>=2.5.0 --index-url https://download.pytorch.org/whl/cpu
+torch>=2.5.0 --index-url https://download.pytorch.org/whl/cpu
+
+# Valid Data & Finance
+yfinance==1.1.0
+scikit-learn
+xgboost>=2.1.2
+
+# --- Utilities ---
+requests==2.31.0
+python-dotenv==1.0.0
+google-genai==0.3.0
+psycopg2-binary
+sqlalchemy
