@@ -21,7 +21,7 @@ def init_db():
     """Initialize schema for stock data and prediction history."""
     conn = get_connection()
     with conn.session as session:
-        session.execute(st.text("""
+        session.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS stock_data (
                 id SERIAL PRIMARY KEY,
                 ticker VARCHAR(20) NOT NULL,
@@ -35,7 +35,7 @@ def init_db():
             )
         """))
         
-        session.execute(st.text("""
+        session.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id SERIAL PRIMARY KEY,
                 ticker VARCHAR(20) NOT NULL,
@@ -89,7 +89,7 @@ def update_stock_cache(ticker: str) -> "pd.DataFrame":
                 
                 with conn.session as session:
                     for idx, row in df_new.iterrows():
-                        session.execute(st.text("""
+                        session.execute(sqlalchemy.text("""
                             INSERT INTO stock_data (ticker, date, open, high, low, close, volume)
                             VALUES (:ticker, :date, :open, :high, :low, :close, :volume)
                             ON CONFLICT (ticker, date) DO UPDATE SET
@@ -102,7 +102,7 @@ def update_stock_cache(ticker: str) -> "pd.DataFrame":
                         })
                     
                     # Enforce 90-day rolling window
-                    session.execute(st.text("DELETE FROM stock_data WHERE ticker = :ticker AND date < :cutoff"), 
+                    session.execute(sqlalchemy.text("DELETE FROM stock_data WHERE ticker = :ticker AND date < :cutoff"), 
                                     {"ticker": ticker, "cutoff": today - timedelta(days=CACHE_DAYS)})
                     session.commit()
     else:
@@ -116,7 +116,7 @@ def update_stock_cache(ticker: str) -> "pd.DataFrame":
             
             with conn.session as session:
                 for idx, row in df_new.iterrows():
-                    session.execute(st.text("""
+                    session.execute(sqlalchemy.text("""
                         INSERT INTO stock_data (ticker, date, open, high, low, close, volume)
                         VALUES (:ticker, :date, :open, :high, :low, :close, :volume)
                         ON CONFLICT (ticker, date) DO NOTHING
@@ -172,7 +172,7 @@ def log_price_inference(ticker: str, inference_date: str, target_date: str,
         sentiment_json = json.dumps(sentiment_json)
 
     with conn.session as session:
-        session.execute(st.text("""
+        session.execute(sqlalchemy.text("""
             INSERT INTO predictions 
             (ticker, inference_date, target_date, direction, target_price, 
              final_prob, xgb_prob, dl_prob, sentiment_move, news_json, sentiment_json, created_at)
@@ -252,7 +252,7 @@ def update_inference_actuals(ticker: str):
                 
                 mae = abs(pred['target_price'] - actual_price)
                 
-                session.execute(st.text("""
+                session.execute(sqlalchemy.text("""
                     UPDATE predictions
                     SET actual_price = :actual, was_correct = :correct, mae = :mae
                     WHERE id = :id

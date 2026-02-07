@@ -15,7 +15,7 @@ __pycache__/
 *.sqlite3
 
 # Streamlit
-.streamlit/
+# .streamlit/
 
 # OS
 .DS_Store
