@@ -56,6 +56,20 @@ def init_db():
                 UNIQUE(ticker, inference_date, target_date)
             )
         """))
+        
+        # Self-healing migrations for existing tables
+        try:
+            # Check for missing columns in predictions
+            session.execute(sqlalchemy.text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS actual_price DOUBLE PRECISION"))
+            session.execute(sqlalchemy.text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS was_correct INTEGER"))
+            session.execute(sqlalchemy.text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS mae DOUBLE PRECISION"))
+            session.execute(sqlalchemy.text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS news_json TEXT DEFAULT '[]'"))
+            session.execute(sqlalchemy.text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS sentiment_json TEXT DEFAULT '{}'"))
+        except Exception as e:
+            if st and hasattr(st, 'warning'): 
+                # Avoid showing this to users unless they are debugging
+                print(f"Database migration note: {e}")
+            
         session.commit()
 
 
@@ -219,44 +233,61 @@ def update_inference_actuals(ticker: str):
     """Calculate and update historical accuracy by comparing targets with actual close prices."""
     conn = get_connection()
     
-    pending = conn.query("""
-        SELECT id, target_date, direction, target_price
-        FROM predictions
-        WHERE ticker = :ticker AND actual_price IS NULL
-    """, params={"ticker": ticker}, ttl=0)
+    try:
+        pending = conn.query("""
+            SELECT id, target_date, direction, target_price
+            FROM predictions
+            WHERE ticker = :ticker AND actual_price IS NULL
+        """, params={"ticker": ticker}, ttl=0)
+    except Exception as e:
+        # If the columns don't exist yet, init_db should fix it on next run
+        print(f"Error querying pending predictions: {e}")
+        return
     
     if pending.empty:
         return
 
     with conn.session as session:
         for _, pred in pending.iterrows():
-            actual = conn.query("""
-                SELECT close FROM stock_data
-                WHERE ticker = :ticker AND date = :tdate
-            """, params={"ticker": ticker, "tdate": pred['target_date']})
-            
-            if not actual.empty:
-                actual_price = actual['close'].iloc[0]
-                
-                prev_row = conn.query("""
+            try:
+                actual = conn.query("""
                     SELECT close FROM stock_data
-                    WHERE ticker = :ticker AND date < :tdate
-                    ORDER BY date DESC LIMIT 1
+                    WHERE ticker = :ticker AND date = :tdate
                 """, params={"ticker": ticker, "tdate": pred['target_date']})
                 
-                if not prev_row.empty:
-                    actual_direction = "UP" if actual_price > prev_row['close'].iloc[0] else "DOWN"
-                    was_correct = 1 if actual_direction == pred['direction'] else 0
-                else:
-                    was_correct = None
+                if not actual.empty:
+                    actual_price = float(actual['close'].iloc[0])
+                    
+                    prev_row = conn.query("""
+                        SELECT close FROM stock_data
+                        WHERE ticker = :ticker AND date < :tdate
+                        ORDER BY date DESC LIMIT 1
+                    """, params={"ticker": ticker, "tdate": pred['target_date']})
+                    
+                    if not prev_row.empty:
+                        prev_close = float(prev_row['close'].iloc[0])
+                        actual_direction = "UP" if actual_price > prev_close else "DOWN"
+                        was_correct = 1 if actual_direction == pred['direction'] else 0
+                    else:
+                        was_correct = None
+                    
+                    mae = float(abs(pred['target_price'] - actual_price))
+                    pred_id = int(pred['id'])
+                    
+                    session.execute(sqlalchemy.text("""
+                        UPDATE predictions
+                        SET actual_price = :actual, was_correct = :correct, mae = :mae
+                        WHERE id = :id
+                    """), {
+                        "actual": actual_price, 
+                        "correct": int(was_correct) if was_correct is not None else None, 
+                        "mae": mae, 
+                        "id": pred_id
+                    })
+            except Exception as e:
+                print(f"Error updating inference actual for prediction {pred.get('id', 'unknown')}: {e}")
+                continue
                 
-                mae = abs(pred['target_price'] - actual_price)
-                
-                session.execute(sqlalchemy.text("""
-                    UPDATE predictions
-                    SET actual_price = :actual, was_correct = :correct, mae = :mae
-                    WHERE id = :id
-                """), {"actual": actual_price, "correct": was_correct, "mae": mae, "id": int(pred['id'])})
         session.commit()
 
 
