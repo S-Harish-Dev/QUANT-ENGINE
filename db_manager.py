@@ -235,7 +235,7 @@ def update_inference_actuals(ticker: str):
     
     try:
         pending = conn.query("""
-            SELECT id, target_date, direction, target_price
+            SELECT id, inference_date, target_date, direction, target_price
             FROM predictions
             WHERE ticker = :ticker AND actual_price IS NULL
         """, params={"ticker": ticker}, ttl=0)
@@ -250,26 +250,33 @@ def update_inference_actuals(ticker: str):
     with conn.session as session:
         for _, pred in pending.iterrows():
             try:
+                # 1. Get Target Price (Actual price on target date)
                 actual = conn.query("""
                     SELECT close FROM stock_data
                     WHERE ticker = :ticker AND date = :tdate
                 """, params={"ticker": ticker, "tdate": pred['target_date']})
                 
-                if not actual.empty:
+                # 2. Get Baseline Price (Actual price on inference date)
+                baseline = conn.query("""
+                    SELECT close FROM stock_data
+                    WHERE ticker = :ticker AND date <= :idate
+                    ORDER BY date DESC LIMIT 1
+                """, params={"ticker": ticker, "idate": pred['inference_date']})
+                
+                if not actual.empty and not baseline.empty:
                     actual_price = float(actual['close'].iloc[0])
+                    baseline_price = float(baseline['close'].iloc[0])
                     
-                    prev_row = conn.query("""
-                        SELECT close FROM stock_data
-                        WHERE ticker = :ticker AND date < :tdate
-                        ORDER BY date DESC LIMIT 1
-                    """, params={"ticker": ticker, "tdate": pred['target_date']})
+                    # Directional Check
+                    actual_direction = "UP" if actual_price > baseline_price else "DOWN"
+                    dir_correct = 1 if actual_direction == pred['direction'] else 0
                     
-                    if not prev_row.empty:
-                        prev_close = float(prev_row['close'].iloc[0])
-                        actual_direction = "UP" if actual_price > prev_close else "DOWN"
-                        was_correct = 1 if actual_direction == pred['direction'] else 0
-                    else:
-                        was_correct = None
+                    # Profit/Target Tolerance Check (+- 1%)
+                    price_error_pct = abs(actual_price - pred['target_price']) / (actual_price + 1e-10)
+                    tolerance_correct = 1 if price_error_pct <= 0.01 else 0
+                    
+                    # Signal Hit Rate: Correct if direction is right OR if it hit the target within 1%
+                    was_correct = 1 if (dir_correct or tolerance_correct) else 0
                     
                     mae = float(abs(pred['target_price'] - actual_price))
                     pred_id = int(pred['id'])
@@ -280,10 +287,13 @@ def update_inference_actuals(ticker: str):
                         WHERE id = :id
                     """), {
                         "actual": actual_price, 
-                        "correct": int(was_correct) if was_correct is not None else None, 
+                        "correct": was_correct, 
                         "mae": mae, 
                         "id": pred_id
                     })
+            except Exception as e:
+                print(f"Error updating inference actual for prediction {pred.get('id', 'unknown')}: {e}")
+                continue
             except Exception as e:
                 print(f"Error updating inference actual for prediction {pred.get('id', 'unknown')}: {e}")
                 continue

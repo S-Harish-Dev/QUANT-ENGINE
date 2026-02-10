@@ -23,6 +23,8 @@ if 'view_mode' not in st.session_state:
     st.session_state.view_mode = None
 if 'scroll_trigger' not in st.session_state:
     st.session_state.scroll_trigger = 0
+if 'force_refresh' not in st.session_state:
+    st.session_state.force_refresh = False
 
 # --- UI Styling & Core Branding ---
 st.markdown("""
@@ -47,10 +49,27 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(14, 165, 233, 0.4) !important;
         transform: scale(1.02) !important;
     }
+
+    /* Red Reset Button Styling for Sidebar */
+    [data-testid="stSidebar"] .stButton button {
+        background: linear-gradient(90deg, #ef4444 0%, #b91c1c 100%) !important;
+        color: white !important;
+        height: 45px !important;
+        font-weight: 800 !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        white-space: normal !important; /* Allow wrapping if needed */
+        line-height: 1.2 !important;
+        margin-top: 15px !important;
+    }
+    [data-testid="stSidebar"] .stButton button:hover {
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.5) !important;
+    }
     
     /* Remove top padding and hide header */
+    /* Restore sidebar visibility (uncollapse button) */
     .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
-    header { visibility: hidden; height: 0px; }
+    header { visibility: visible !important; height: auto !important; }
+    .stAppDeployButton { display: none !important; }
     
     /* Hide Streamlit footer and remove wasted space */
     footer { visibility: hidden; height: 0px; }
@@ -338,6 +357,15 @@ def load_pkl_model(ticker):
         print(f"Error loading model {ticker}: {e}")
         return None
 
+# --- Sidebar Controls ---
+with st.sidebar:
+    st.markdown("### 🛠️ Engine Controls")
+    st.info("Bypass local cache")
+    if st.button("🔥 RESET", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.force_refresh = True
+        st.toast("Engine Reset: Refreshing all data...", icon="🔥")
+
 # --- Dynamic Header Placeholder ---
 header_placeholder = st.empty()
 
@@ -440,17 +468,20 @@ if st.session_state.view_mode:
             
             target_date_str = target_date.strftime("%Y-%m-%d")
             
-            # Use cached inference if available within TTL window
+            # Use cached inference if available within TTL window (Skip if forcing refresh)
             recent_inference = db_manager.get_recent_inference(selected_ticker, target_date_str)
+            created_time = "N/A"
+            from_cache = False
             
             if recent_inference:
-                # Format timestamp to HH:mm
                 try:
                     created_dt = datetime.fromisoformat(recent_inference['created_at'])
                     created_time = created_dt.strftime("%H:%M")
                 except:
                     created_time = "Recent"
-                
+
+            if recent_inference and not st.session_state.force_refresh:
+                from_cache = True
                 final_weighted_price = recent_inference['target_price']
                 combined_move_pct = ((final_weighted_price / latest_price) - 1) * 100
                 
@@ -479,6 +510,12 @@ if st.session_state.view_mode:
                     sentiment_data = json.loads(sentiment_json) if sentiment_json else None
                     if sentiment_data is None:
                         raise ValueError("Empty sentiment data")
+                    
+                    # SURFACE CACHED ERRORS: Check if the cached reason contains an error message
+                    cached_reason = sentiment_data.get('reason', '')
+                    if "Usage Limit" in cached_reason or "Service Error" in cached_reason:
+                        st.warning(f"🤖 **Stored Gemini AI Status**: {cached_reason}")
+                        
                 except Exception as e:
                     # Generic fallback for corrupted or legacy JSON data
                     sentiment_data = {
@@ -551,12 +588,15 @@ if st.session_state.view_mode:
                     sentiment_json=json.dumps(sentiment_data)
                 )
                 
+                # Reset force flag after successful execution
+                st.session_state.force_refresh = False
+                
                 # Cleanup local variables to optimize memory usage
                 if 'dl_model' in locals(): del dl_model
                 gc.collect()
 
         # --- Results UI (Moved OUT of spinner for responsiveness) ---
-        if 'recent_inference' in locals() and recent_inference:
+        if from_cache:
             st.info(f"✨ Using recent Price Inference from cache (Created: {created_time})")
 
         # Result Analysis Header
@@ -750,7 +790,7 @@ if st.session_state.view_mode:
         # --- Intelligence: News & Sentiment Cards ---
         st.markdown("### 📰 Market Sentiment & Intelligence")
         
-        if not sentiment_data.get('relevant'):
+        if not news:
             import random
             img_dir = os.path.join(os.path.dirname(__file__), "images")
             try:

@@ -173,7 +173,7 @@ JSON Output:
             return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "Gemini API key not configured.", "relevant": False}
             
         response = client.models.generate_content(
-            model='gemini-2.0-flash', # Note: gemini-2.5-flash might not be public yet, using 2.0-flash
+            model='gemini-2.5-flash', 
             contents=prompt
         )
         result_text = response.text.strip()
@@ -203,11 +203,13 @@ JSON Output:
         
         # Check for quota/limit errors
         if "429" in error_msg or "quota" in error_msg.lower() or "exhausted" in error_msg.lower():
-            API_ERROR_STATE["gemini_api_error"] = "AI Usage Limit Reached (429)"
-            return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "AI Usage Limit Reached", "relevant": False}
+            reason_msg = "AI Usage Limit Reached (429)"
+            API_ERROR_STATE["gemini_api_error"] = reason_msg
+            return {"trend": "NEUTRAL", "expectation": 0.0, "reason": reason_msg, "relevant": False}
         
-        API_ERROR_STATE["gemini_api_error"] = error_msg
-        return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "Sentiment analysis unavailable (API Error).", "relevant": False}
+        reason_msg = f"AI Service Error: {error_msg[:50]}"
+        API_ERROR_STATE["gemini_api_error"] = reason_msg
+        return {"trend": "NEUTRAL", "expectation": 0.0, "reason": reason_msg, "relevant": False}
 
 if __name__ == "__main__":
     # Test
