@@ -399,32 +399,23 @@ def set_weekly_view():
     st.session_state.scroll_trigger += 1
 
 # --- Action Controls (Prefetched for Instant UI) ---
-_, mid_col, _ = st.columns([1, 1.5, 1])
+with st.container():
+    _, mid_col, _ = st.columns([1, 1.5, 1])
+    with mid_col:
+        # Anchor for mobile CSS targeting
+        st.markdown('<div id="mobile_btn_anchor"></div>', unsafe_allow_html=True)
+        col1, col2 = st.columns([1,1], gap="small")
 
-with mid_col:
-    # Anchor for mobile CSS targeting
-    st.markdown('<div id="mobile_btn_anchor"></div>', unsafe_allow_html=True)
-    col1, col2 = st.columns([1,1], gap="small")
+        with col1:
+            st.button("⚡ NEXT DAY", use_container_width=True, on_click=set_daily_view)
 
-    with col1:
-        st.button("⚡ NEXT DAY", use_container_width=True, on_click=set_daily_view)
+        with col2:
+            st.button("📈 WEEKLY TREND", use_container_width=True, on_click=set_weekly_view)
 
-    with col2:
-        st.button("📈 WEEKLY TREND", use_container_width=True, on_click=set_weekly_view)
-
-# --- Background Data Orchestration ---
-    # UI adjustments for compact spacing
-    st.markdown("""
-        <style>
-        .stSpinner { margin-bottom: -15px !important; }
-        [data-testid="stExpander"] { margin-top: -10px !important; }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    with st.spinner(f"Syncing {selected_ticker} data..."):
-        db_manager.update_stock_cache_efficient(selected_ticker)
-        db_manager.update_inference_actuals(selected_ticker)
-        stats = db_manager.get_accuracy_stats(selected_ticker)
+# --- Background Data Orchestration (Silent Update) ---
+db_manager.update_stock_cache_efficient(selected_ticker)
+db_manager.update_inference_actuals(selected_ticker)
+stats = db_manager.get_accuracy_stats(selected_ticker)
 
 # --- Update Header with Real Stats ---
 trend_acc = f"{stats['trend_accuracy']:.1f}% ✓" if stats['trend_accuracy'] is not None else "N/A"
