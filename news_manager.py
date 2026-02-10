@@ -21,6 +21,12 @@ def get_secret(key, default=None):
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 NEWSDATA_API_KEY = get_secret("NEWSDATA_API_KEY")
 
+# --- Global API Error Tracking ---
+API_ERROR_STATE = {
+    "news_api_error": None,
+    "gemini_api_error": None
+}
+
 def get_gemini_client():
     """Initialize Gemini client with lazy loading for efficiency."""
     if not GEMINI_API_KEY:
@@ -31,19 +37,22 @@ def get_gemini_client():
 def fetch_news(ticker):
     """Aggregate market news using parallel company, sector, and macro queries."""
     ticker_info = {
-        "RELIANCE.NS": {"name": "Reliance Industries", "sector": "Energy OR Retail OR Telecom"},
-        "TCS.NS": {"name": "Tata Consultancy Services", "sector": "Information Technology OR Software"},
-        "HDFCBANK.NS": {"name": "HDFC Bank", "sector": "Banking OR Finance"},
-        "ICICIBANK.NS": {"name": "ICICI Bank", "sector": "Banking OR Finance"}
+        "RELIANCE.NS": {"name": "Reliance Industries", "keywords": "Reliance OR Ambani OR Jio OR RIL", "sector": "Energy OR Retail OR Telecom"},
+        "TCS.NS": {"name": "Tata Consultancy Services", "keywords": "TCS OR Tata Consultancy OR Tata Group", "sector": "IT sector OR Software India"},
+        "HDFCBANK.NS": {"name": "HDFC Bank", "keywords": "HDFC OR HDFC Bank", "sector": "Banking India OR Finance India"},
+        "ICICIBANK.NS": {"name": "ICICI Bank", "keywords": "ICICI OR ICICI Bank", "sector": "Banking India OR Finance India"}
     }
-    info = ticker_info.get(ticker, {"name": ticker.split('.')[0], "sector": ""})
+    info = ticker_info.get(ticker, {"name": ticker.split('.')[0], "keywords": ticker.split('.')[0], "sector": ""})
     
     queries = [
-        (f"\"{info['name']}\" stock India", 1),
-        (f"({info['sector']}) India market news" if info['sector'] else f"\"{info['name']}\" stock India", 2),
-        ("India budget 2025 OR Indian import tariffs OR Indian corporate tax", 3)
+        (f"\"{info['name']}\" OR {info['keywords']} stock news India", 1),
+        (f"({info['sector']}) AND (market news OR stock news) India" if info['sector'] else f"{info['keywords']} India", 2),
+        ("Nifty 50 OR Sensex OR Indian Economy OR RBI Policy news", 3)
     ]
     
+    # Reset error state for new fetch
+    API_ERROR_STATE["news_api_error"] = None
+
     def fetch_single_query(q_data):
         q, priority = q_data
         url = f"https://newsdata.io/api/1/news?apikey={NEWSDATA_API_KEY}&q={urllib.parse.quote(q)}&language=en"
@@ -55,8 +64,18 @@ def fetch_news(ticker):
                 for r in results:
                     r["_priority"] = priority
                 return results
+            else:
+                # Track specific API error message if provided by NewsData.io
+                error_msg = data.get("results", {}).get("message") or data.get("results", {}).get("code") or "Unknown API Error"
+                if "apikey" in error_msg.lower() or "unauthorized" in error_msg.lower():
+                    API_ERROR_STATE["news_api_error"] = "Invalid NewsData API Key"
+                elif "rate limit" in error_msg.lower() or "too many requests" in error_msg.lower():
+                    API_ERROR_STATE["news_api_error"] = "NewsData API Rate Limit Reached"
+                else:
+                    API_ERROR_STATE["news_api_error"] = error_msg
         except Exception as e:
             print(f"Error fetching {q}: {e}")
+            API_ERROR_STATE["news_api_error"] = str(e)
         return []
 
     all_results = []
@@ -103,6 +122,9 @@ def fetch_news(ticker):
 
 def analyze_sentiment(ticker, news_list):
     """Apply Gemini LLM to interpret macro and asset-specific news impact."""
+    # Reset Gemini error state
+    API_ERROR_STATE["gemini_api_error"] = None
+
     if not news_list:
         return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "No high-impact news or macro data found.", "relevant": False}
 
@@ -147,6 +169,7 @@ JSON Output:
     try:
         client = get_gemini_client()
         if not client:
+            API_ERROR_STATE["gemini_api_error"] = "Gemini API Key missing"
             return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "Gemini API key not configured.", "relevant": False}
             
         response = client.models.generate_content(
@@ -180,8 +203,10 @@ JSON Output:
         
         # Check for quota/limit errors
         if "429" in error_msg or "quota" in error_msg.lower() or "exhausted" in error_msg.lower():
+            API_ERROR_STATE["gemini_api_error"] = "AI Usage Limit Reached (429)"
             return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "AI Usage Limit Reached", "relevant": False}
-            
+        
+        API_ERROR_STATE["gemini_api_error"] = error_msg
         return {"trend": "NEUTRAL", "expectation": 0.0, "reason": "Sentiment analysis unavailable (API Error).", "relevant": False}
 
 if __name__ == "__main__":

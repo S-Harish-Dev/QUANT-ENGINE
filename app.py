@@ -399,8 +399,8 @@ with mid_col:
         stats = db_manager.get_accuracy_stats(selected_ticker)
 
 # --- Update Header with Real Stats ---
-trend_acc = f"{stats['trend_accuracy']:.1f}% ✓" if stats['trend_accuracy'] else "N/A"
-mae_val = f"₹{stats['avg_mae']:.2f}" if stats['avg_mae'] else "N/A"
+trend_acc = f"{stats['trend_accuracy']:.1f}% ✓" if stats['trend_accuracy'] is not None else "N/A"
+mae_val = f"₹{stats['avg_mae']:.2f}" if stats['avg_mae'] is not None else "N/A"
 
 header_placeholder.markdown(f"""
 <div class='header-box' style='padding-bottom: 10px;'>
@@ -518,7 +518,16 @@ if st.session_state.view_mode:
                 
                 # Fetch Sentiment & News
                 news = news_manager.fetch_news(selected_ticker)
+                
+                # Report News API Errors
+                if news_manager.API_ERROR_STATE["news_api_error"]:
+                    st.error(f"📡 **News API Error**: {news_manager.API_ERROR_STATE['news_api_error']}")
+                
                 sentiment_data = news_manager.analyze_sentiment(selected_ticker, news)
+                
+                # Report Gemini API Errors
+                if news_manager.API_ERROR_STATE["gemini_api_error"]:
+                    st.warning(f"🤖 **Gemini AI Intelligence Error**: {news_manager.API_ERROR_STATE['gemini_api_error']}")
                 
                 # Weighted Ensemble Logic: 60% Technical Signal, 40% Macro Sentiment
                 ml_move_pct = ((est_price / latest_price) - 1) * 100
